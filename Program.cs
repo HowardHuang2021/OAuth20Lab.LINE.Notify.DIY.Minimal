@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.WebUtilities;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,6 +74,36 @@ async (string code, string state, IHttpClientFactory httpClientFactory, IConfigu
     return Results.Json(new { tokenResponse.AccessToken });
 });
 
+app.MapPost("notify", async (Notify input, IHttpClientFactory httpClientFactory, IConfiguration configuration) =>
+{
+    if (string.IsNullOrWhiteSpace(input.AccessToken) || string.IsNullOrWhiteSpace(input.Message))
+    {
+        return Results.BadRequest();
+    }
+
+    using var client = httpClientFactory.CreateClient();
+
+    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", input.AccessToken);
+
+    var keyValuePairs = new List<KeyValuePair<string?, string?>>
+    {
+        new("message", input.Message)
+    };
+
+    const string notifyEndpoint = "https://notify-api.line.me/api/notify";
+    var encodedContent = new FormUrlEncodedContent(keyValuePairs);
+
+    using var httpResponseMessage = await client.PostAsync(notifyEndpoint, encodedContent);
+
+    if (!httpResponseMessage.IsSuccessStatusCode)
+    {
+        string responseContent = await httpResponseMessage.Content.ReadAsStringAsync();
+        throw new Exception(responseContent);
+    }
+
+    return Results.Ok();
+});
+
 app.Run();
 
 public class TokenResponse
@@ -82,5 +113,12 @@ public class TokenResponse
     public string Message { get; set; }
 
     [JsonPropertyName("access_token")]
+    public string AccessToken { get; set; }
+}
+
+public class Notify
+{
+    public string Message { get; set; }
+
     public string AccessToken { get; set; }
 }
